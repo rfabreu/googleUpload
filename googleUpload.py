@@ -11,7 +11,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from datetime import datetime
 import smtplib
+from dotenv import load_dotenv
 from email.mime.text import MIMEText
+
+load_dotenv()
 
 # Environment variables for sensitive information
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
@@ -39,8 +42,8 @@ def send_email_notification(to_email, subject, message):
     """Send a confirmation email upon upload completion."""
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
-    smtp_user = os.getenv("SMTP_USER")  # Replace with your email
-    smtp_password = os.getenv("SMTP_PASSWORD")  # Replace with your app-specific password
+    smtp_user = os.getenv("SMTP_USER")  # Email address
+    smtp_password = os.getenv("SMTP_PASSWORD")  # App-specific password
 
     msg = MIMEText(message)
     msg["Subject"] = subject
@@ -49,10 +52,12 @@ def send_email_notification(to_email, subject, message):
 
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
+            server.starttls()  # Upgrade the connection to secure
             server.login(smtp_user, smtp_password)
             server.sendmail(smtp_user, to_email, msg.as_string())
         print("Email notification sent successfully.")
+    except smtplib.SMTPAuthenticationError as auth_error:
+        print(f"SMTP Authentication Error: {auth_error}")
     except Exception as e:
         print(f"Failed to send email notification: {e}")
 
@@ -178,3 +183,11 @@ def interactive_cli():
 
 if __name__ == "__main__":
     interactive_cli()
+
+# Test email notification function
+if __name__ == "__main__":
+    send_email_notification(
+        to_email="rafaelg@nextologies.com",
+        subject="Test email notification",
+        message="This is a test email from Google Upload script."
+    )
