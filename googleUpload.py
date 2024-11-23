@@ -183,11 +183,3 @@ def interactive_cli():
 
 if __name__ == "__main__":
     interactive_cli()
-
-# Test email notification function
-if __name__ == "__main__":
-    send_email_notification(
-        to_email="rafaelg@nextologies.com",
-        subject="Test email notification",
-        message="This is a test email from Google Upload script."
-    )
