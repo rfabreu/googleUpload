@@ -1,6 +1,3 @@
-# !!! NEW VERSION == FIXES DUPLICATED MESSAGES
-# !!! ADDS ELAPSED TIME
-# !!! IMPLEMENTS INTERACTIVE CLI WITH PROMPTS AND STATUS NOTIFICATIONS
 import requests
 import tempfile
 import os
@@ -37,30 +34,44 @@ CHUNK_SIZE = 10 * 1024 * 1024  # 10MB chunk size
 TIMEOUT_SECONDS = 300  # Timeout if no progress in 5 minutes
 MAX_RETRIES = 5  # Maximum retry attempts
 
-
-def send_email_notification(to_email, subject, message):
-    """Send a confirmation email upon upload completion."""
+def send_email_notification(to_emails, cc_emails, bcc_emails, subject, reply_email):
+    """Send a single confirmation email after all uploads."""
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
     smtp_user = os.getenv("SMTP_USER")  # Email address
     smtp_password = os.getenv("SMTP_PASSWORD")  # App-specific password
 
-    msg = MIMEText(message)
+    message_body = f"""Dear Partner,
+
+The recordings of today's HBCUGO event have been uploaded to the shared drive. They should now be available for download.
+
+If you have any questions or concerns, please do not hesitate to contact us at {reply_email}.
+
+Thank you."""
+
+    msg = MIMEText(message_body)
     msg["Subject"] = subject
     msg["From"] = smtp_user
-    msg["To"] = to_email
+
+    # Add recipients to appropriate fields
+    msg["To"] = ", ".join(to_emails)
+    if cc_emails:
+        msg["Cc"] = ", ".join(cc_emails)
+    if bcc_emails:
+        msg["Bcc"] = ", ".join(bcc_emails)
+
+    all_recipients = to_emails + cc_emails + bcc_emails
 
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()  # Upgrade the connection to secure
             server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, to_email, msg.as_string())
+            server.sendmail(smtp_user, all_recipients, msg.as_string())
         print("Email notification sent successfully.")
     except smtplib.SMTPAuthenticationError as auth_error:
         print(f"SMTP Authentication Error: {auth_error}")
     except Exception as e:
         print(f"Failed to send email notification: {e}")
-
 
 def upload_large_file(file_name, file_url, custom_name):
     """Download and upload large files from HyperDeck to Google Drive with progress tracking."""
@@ -128,14 +139,6 @@ def upload_large_file(file_name, file_url, custom_name):
     print(f"[{end_time}] Completed processing for: {new_name}")
     print(f"Total elapsed time: {elapsed_time}")
 
-    # Send email notification
-    send_email_notification(
-        to_email = os.getenv("EMAIL_TO"),
-        subject=f"Upload Complete: {new_name}",
-        message=f"The file {new_name} has been successfully uploaded to Google Drive."
-    )
-
-
 def interactive_cli():
     """Interactive CLI to configure and process HyperDeck downloads/uploads."""
     # Prompt for HyperDeck IP or URL
@@ -174,12 +177,43 @@ def interactive_cli():
     # Prompt for custom file name
     custom_name = input("Enter a custom name for the downloaded files (without extension): ").strip()
 
+    # Prompt for email addresses and type
+    email_addresses = input("Enter email addresses to notify (comma-separated): ").split(',')
+    email_addresses = [email.strip() for email in email_addresses]
+
+    email_type = input("Send emails as (To/Cc/Bcc): ").strip().lower()
+    to_emails, cc_emails, bcc_emails = [], [], []
+
+    if email_type == "to":
+        to_emails = email_addresses
+    elif email_type == "cc":
+        cc_emails = email_addresses
+    elif email_type == "bcc":
+        bcc_emails = email_addresses
+    else:
+        print("Invalid email type selected. Defaulting to To.")
+        to_emails = email_addresses
+
+    # Prompt for email subject
+    email_subject = input("Enter the subject line for the notification email: ").strip()
+
+    # Prompt for reply email
+    reply_email = input("Enter the reply-back email address: ").strip()
+
     # Process each selected file
     for file_info in selected_files:
         file_name = file_info["name"]
         file_url = f"{folder_url}{file_name}"
         upload_large_file(file_name, file_url, custom_name)
 
+    # Send email notification after all uploads
+    send_email_notification(
+        to_emails=to_emails,
+        cc_emails=cc_emails,
+        bcc_emails=bcc_emails,
+        subject=email_subject,
+        reply_email=reply_email
+    )
 
 if __name__ == "__main__":
     interactive_cli()
