@@ -10,6 +10,7 @@ from datetime import datetime
 import smtplib
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
+from slackNotify import send_notification
 
 load_dotenv()
 
@@ -78,6 +79,9 @@ def upload_large_file(file_name, file_url, custom_name):
     start_time = datetime.now()
     print(f"[{start_time}] Starting download and upload for: {file_name}")
 
+    # Notify Slack of download start
+    send_notification(f"Starting download for: {custom_name}{os.path.splitext(file_name)[1]}")
+
     # Set up Google Drive upload metadata
     mime_type = 'video/quicktime' if file_name.endswith('.mov') else 'application/x-mcc'
     new_name = f"{custom_name}{os.path.splitext(file_name)[1]}"
@@ -94,6 +98,7 @@ def upload_large_file(file_name, file_url, custom_name):
         temp_file_path = temp_file.name
 
         # Download the file
+        start_timer = time.time()  # Timer for periodic notifications
         with requests.get(file_url, stream=True) as r, tqdm(total=total_size, unit='B', unit_scale=True,
                                                             desc=f"Downloading {file_name}") as pbar:
             for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
@@ -101,10 +106,17 @@ def upload_large_file(file_name, file_url, custom_name):
                     temp_file.write(chunk)
                     pbar.update(len(chunk))
 
-        print(f"Download complete for {file_name}. Temporary file saved at: {temp_file_path}")
+                # Notify every 10 minutes
+                if time.time() - start_timer >= 600:
+                    send_notification(f"Download in progress for: {custom_name}{os.path.splitext(file_name)[1]}")
+                    start_timer = time.time()
 
-    # Upload the file
+        print(f"Download complete for {file_name}. Temporary file saved at: {temp_file_path}")
+        send_notification(f"Download complete for: {custom_name}{os.path.splitext(file_name)[1]}")
+
+    # Notify Slack of upload start
     print(f"Starting upload for {new_name}...")
+    send_notification(f"Starting upload for: {custom_name}{os.path.splitext(file_name)[1]}")
 
     with open(temp_file_path, 'rb') as file_stream:
         media = MediaIoBaseUpload(file_stream, mimetype=mime_type, chunksize=CHUNK_SIZE, resumable=True)
@@ -116,6 +128,7 @@ def upload_large_file(file_name, file_url, custom_name):
         )
 
         response = None
+        start_timer = time.time()  # Reset timer for periodic notifications
         with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Uploading {new_name}") as pbar:
             while response is None:
                 try:
@@ -123,12 +136,18 @@ def upload_large_file(file_name, file_url, custom_name):
                     if status:
                         progress_increment = status.resumable_progress - pbar.n
                         pbar.update(progress_increment)
+
+                    # Notify every 10 minutes
+                    if time.time() - start_timer >= 600:
+                        send_notification(f"Upload in progress for: {custom_name}{os.path.splitext(file_name)[1]}")
+                        start_timer = time.time()
                 except Exception as e:
                     print(f"Error during upload: {e}")
                     time.sleep(5)
 
     if response:
         print(f"Upload complete for {new_name}")
+        send_notification(f"Upload complete for: {custom_name}{os.path.splitext(file_name)[1]}")
 
     # Clean up the temporary file
     os.remove(temp_file_path)
@@ -200,11 +219,17 @@ def interactive_cli():
     # Prompt for reply email
     reply_email = input("Enter the reply-back email address: ").strip()
 
+    # Notify Slack when the download process actually starts
+    send_notification(f"HyperDeck upload process started for: {custom_name}")
+
     # Process each selected file
     for file_info in selected_files:
         file_name = file_info["name"]
         file_url = f"{folder_url}{file_name}"
         upload_large_file(file_name, file_url, custom_name)
+
+    # Notify Slack of process completion
+    send_notification(f"HyperDeck upload process completed for: {custom_name}")
 
     # Send email notification after all uploads
     send_email_notification(
